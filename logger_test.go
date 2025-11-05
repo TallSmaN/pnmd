@@ -1,10 +1,16 @@
-package pnmd
+package main
 
 import (
 	"log/slog"
 	"reflect"
 	"testing"
 )
+
+func newTestLogger() *Logger {
+	return &Logger{
+		cfg: defaultLogger.cfg,
+	}
+}
 
 func TestConfigure(t *testing.T) {
 	type args struct {
@@ -69,19 +75,18 @@ func TestConfigure(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg = Options{}
-			global = nil
+			l := newTestLogger()
 
-			Configure(tt.args.o)
+			l.Configure(tt.args.o)
 
-			if cfg.Level != tt.wantLevel {
-				t.Fatalf("Configure() cfg.Level = %v, want %v", cfg.Level, tt.wantLevel)
+			if l.cfg.Level != tt.wantLevel {
+				t.Fatalf("Configure() cfg.Level = %v, want %v", l.cfg.Level, tt.wantLevel)
 			}
-			if !reflect.DeepEqual(cfg.CallerEnabled, tt.wantMap) {
-				t.Fatalf("Configure() cfg.CallerEnabled = %#v, want %#v", cfg.CallerEnabled, tt.wantMap)
+			if !reflect.DeepEqual(l.cfg.CallerEnabled, tt.wantMap) {
+				t.Fatalf("Configure() cfg.CallerEnabled = %#v, want %#v", l.cfg.CallerEnabled, tt.wantMap)
 			}
-			if global == nil {
-				t.Fatalf("Configure() did not initialize global logger")
+			if l.Logger == nil {
+				t.Fatalf("Configure() did not initialize underlying slog.Logger")
 			}
 		})
 	}
@@ -154,22 +159,23 @@ func TestDisableCallerFor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg = Options{
-				Level:         slog.LevelInfo,
-				CallerEnabled: map[slog.Level]bool{},
-			}
+			l := newTestLogger()
+			l.cfg.Level = slog.LevelInfo
+			l.cfg.CallerEnabled = map[slog.Level]bool{}
+
 			for k, v := range tt.before {
-				cfg.CallerEnabled[k] = v
+				l.cfg.CallerEnabled[k] = v
 			}
-			global = nil
 
-			DisableCallerFor(tt.args.levels...)
+			l.Logger = nil
 
-			if !reflect.DeepEqual(cfg.CallerEnabled, tt.after) {
-				t.Fatalf("DisableCallerFor() cfg.CallerEnabled = %#v, want %#v", cfg.CallerEnabled, tt.after)
+			l.DisableCallerFor(tt.args.levels...)
+
+			if !reflect.DeepEqual(l.cfg.CallerEnabled, tt.after) {
+				t.Fatalf("DisableCallerFor() cfg.CallerEnabled = %#v, want %#v", l.cfg.CallerEnabled, tt.after)
 			}
-			if global == nil {
-				t.Fatalf("DisableCallerFor() did not rebuild global logger")
+			if l.Logger == nil {
+				t.Fatalf("DisableCallerFor() did not rebuild underlying slog.Logger")
 			}
 		})
 	}
@@ -242,95 +248,90 @@ func TestEnableCallerFor(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg = Options{
-				Level:         slog.LevelInfo,
-				CallerEnabled: map[slog.Level]bool{},
-			}
+			l := newTestLogger()
+			l.cfg.Level = slog.LevelInfo
+			l.cfg.CallerEnabled = map[slog.Level]bool{}
+
 			for k, v := range tt.before {
-				cfg.CallerEnabled[k] = v
+				l.cfg.CallerEnabled[k] = v
 			}
-			global = nil
 
-			EnableCallerFor(tt.args.levels...)
+			l.Logger = nil
 
-			if !reflect.DeepEqual(cfg.CallerEnabled, tt.after) {
-				t.Fatalf("EnableCallerFor() cfg.CallerEnabled = %#v, want %#v", cfg.CallerEnabled, tt.after)
+			l.EnableCallerFor(tt.args.levels...)
+
+			if !reflect.DeepEqual(l.cfg.CallerEnabled, tt.after) {
+				t.Fatalf("EnableCallerFor() cfg.CallerEnabled = %#v, want %#v", l.cfg.CallerEnabled, tt.after)
 			}
-			if global == nil {
-				t.Fatalf("EnableCallerFor() did not rebuild global logger")
+			if l.Logger == nil {
+				t.Fatalf("EnableCallerFor() did not rebuild underlying slog.Logger")
 			}
 		})
 	}
 }
 
-func TestGet(t *testing.T) {
-	tests := []struct {
-		name string
-		want *slog.Logger
-	}{
-		{
-			name: "initializes global once and returns same instance",
-			want: nil,
-		},
+func TestGet_PackageLoggerInstance(t *testing.T) {
+	defaultLogger = Get()
+
+	l1 := Get()
+	if l1 == nil || l1.Logger == nil {
+		t.Fatalf("Get() must build underlying *slog.Logger on first call")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg = Options{}
-			global = nil
+	core1 := l1.Logger
 
-			tt.want = Get()
-			if tt.want == nil {
-				t.Fatalf("Get() returned nil on first call")
-			}
+	l2 := Get()
+	if l2 != l1 {
+		t.Errorf("Get() must return the same *Logger instance: %p vs %p", l1, l2)
+	}
+	if l2.Logger != core1 {
+		t.Errorf("core must be the same before reconfigure")
+	}
 
-			if got := Get(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Get() second call returned different instance: %p vs %p", got, tt.want)
-			}
-		})
+	l2.Configure(Options{})
+	core2 := Get().Logger
+	if core2 == nil {
+		t.Fatalf("nil core after Configure")
+	}
+	if core2 == core1 {
+		t.Errorf("Configure() must rebuild underlying *slog.Logger")
+	}
+
+	beforeCore := Get().Logger
+	defaultLogger.SetLevel(slog.LevelError)
+	afterCore := Get().Logger
+	if afterCore == nil {
+		t.Fatalf("nil core after SetLevel")
+	}
+	if afterCore == beforeCore {
+		t.Errorf("SetLevel() must rebuild underlying *slog.Logger")
 	}
 }
 
 func TestSetLevel(t *testing.T) {
-	type args struct {
-		level slog.Level
-	}
 	tests := []struct {
-		name string
-		args args
+		name  string
+		level slog.Level
 	}{
-		{
-			name: "set level to debug",
-			args: args{level: slog.LevelDebug},
-		},
-		{
-			name: "set level to warn",
-			args: args{level: slog.LevelWarn},
-		},
-		{
-			name: "set level to error",
-			args: args{level: slog.LevelError},
-		},
+		{name: "set level to debug", level: slog.LevelDebug},
+		{name: "set level to warn", level: slog.LevelWarn},
+		{name: "set level to error", level: slog.LevelError},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg = Options{
-				Level: slog.LevelInfo,
-				CallerEnabled: map[slog.Level]bool{
-					slog.LevelDebug: true,
-					slog.LevelInfo:  true,
-					slog.LevelWarn:  true,
-					slog.LevelError: true,
-				},
-			}
-			global = nil
+			l := newTestLogger()
+			prev := l.get()
 
-			SetLevel(tt.args.level)
+			l.SetLevel(tt.level)
 
-			if cfg.Level != tt.args.level {
-				t.Fatalf("SetLevel() cfg.Level = %v, want %v", cfg.Level, tt.args.level)
+			if l.cfg.Level != tt.level {
+				t.Fatalf("SetLevel() cfg.Level = %v, want %v", l.cfg.Level, tt.level)
 			}
-			if global == nil {
-				t.Fatalf("SetLevel() did not rebuild global logger")
+			if l.Logger == nil {
+				t.Fatalf("SetLevel() did not rebuild underlying slog.Logger")
+			}
+			if l.Logger == prev {
+				t.Errorf("SetLevel() should rebuild slog.Logger instance")
 			}
 		})
 	}

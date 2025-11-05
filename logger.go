@@ -1,68 +1,108 @@
-package pnmd
+package main
 
 import (
 	"log/slog"
+	"sync"
 
 	log "github.com/TallSmaN/pnmd/internal/logger"
 )
 
 type Options = log.Config
 
-var (
-	cfg    = log.DefaultConfig()
-	global *slog.Logger
-)
+type Logger struct {
+	mu  sync.RWMutex
+	cfg log.Config
+	*slog.Logger
+}
 
-// Get returns the package-level logger, constructing it on first use.
-// Not concurrency-safe; call from init or a single goroutine during setup.
-func Get() *slog.Logger {
-	if global == nil {
-		global = slog.New(log.NewTreeHandler(cfg))
+// defaultLogger is the package-level singleton instance.
+var defaultLogger = &Logger{
+	cfg: log.DefaultConfig(),
+}
+
+// Get returns the global logger.
+// Builds it on first use and always returns the same instance.
+// Safe for concurrent calls.
+func Get() *Logger {
+	defaultLogger.mu.Lock()
+	defer defaultLogger.mu.Unlock()
+	if defaultLogger.Logger == nil {
+		defaultLogger.Logger = slog.New(log.NewTreeHandler(defaultLogger.cfg))
 	}
-
-	return global
+	return defaultLogger
 }
 
-// Configure replaces the global configuration and logger.
-// Not concurrency-safe; prefer calling during process initialization.
-func Configure(o Options) {
-	cfg = log.Normalize(o)
-	global = slog.New(log.NewTreeHandler(cfg))
+// Configure replaces the current configuration and rebuilds the logger.
+// Should typically be called once during initialization.
+func (l *Logger) Configure(o Options) *Logger {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cfg = log.Normalize(o)
+	l.Logger = slog.New(log.NewTreeHandler(l.cfg))
+	return l
 }
 
-// SetLevel updates the minimum enabled level on the global logger.
-// Not concurrency-safe; racing calls may produce undefined results.
-func SetLevel(level slog.Level) {
-	cfg.Level = level
-	global = slog.New(log.NewTreeHandler(cfg))
+// SetLevel updates the minimum enabled log level.
+// Safe for concurrent use.
+func (l *Logger) SetLevel(level slog.Level) *Logger {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cfg.Level = level
+	l.Logger = slog.New(log.NewTreeHandler(l.cfg))
+	return l
 }
 
-// DisableCallerFor disables caller display for the given levels.
-// If the caller map is nil, defaults are restored first.
-// Not concurrency-safe.
-func DisableCallerFor(levels ...slog.Level) {
-	if cfg.CallerEnabled == nil {
-		cfg = log.DefaultConfig()
-	}
+// DisableCallerFor disables caller information output for the specified log levels.
+// Automatically initializes the caller map if it is nil.
+// Safe for concurrent use.
+func (l *Logger) DisableCallerFor(levels ...slog.Level) *Logger {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.ensureCallerMapLocked()
 
 	for _, lv := range levels {
-		cfg.CallerEnabled[lv] = false
+		l.cfg.CallerEnabled[lv] = false
 	}
 
-	global = slog.New(log.NewTreeHandler(cfg))
+	l.Logger = slog.New(log.NewTreeHandler(l.cfg))
+	return l
 }
 
-// EnableCallerFor enables caller display for the given levels.
-// If the caller map is nil, defaults are restored first.
-// Not concurrency-safe.
-func EnableCallerFor(levels ...slog.Level) {
-	if cfg.CallerEnabled == nil {
-		cfg = log.DefaultConfig()
-	}
+// EnableCallerFor enables caller information output for the specified log levels.
+// Automatically initializes the caller map if it is nil.
+// Safe for concurrent use.
+func (l *Logger) EnableCallerFor(levels ...slog.Level) *Logger {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.ensureCallerMapLocked()
 
 	for _, lv := range levels {
-		cfg.CallerEnabled[lv] = true
+		l.cfg.CallerEnabled[lv] = true
 	}
 
-	global = slog.New(log.NewTreeHandler(cfg))
+	l.Logger = slog.New(log.NewTreeHandler(l.cfg))
+	return l
+}
+
+// get returns the internal slog.Logger, creating it if necessary.
+func (l *Logger) get() *slog.Logger {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.Logger == nil {
+		l.Logger = slog.New(log.NewTreeHandler(l.cfg))
+	}
+	return l.Logger
+}
+
+// ensureCallerMapLocked ensures that the CallerEnabled map exists.
+// The caller must hold the write lock.
+func (l *Logger) ensureCallerMapLocked() {
+	if l.cfg.CallerEnabled == nil {
+		l.cfg.CallerEnabled = map[slog.Level]bool{
+			slog.LevelDebug: true,
+			slog.LevelInfo:  true,
+			slog.LevelWarn:  true,
+			slog.LevelError: true,
+		}
+	}
 }

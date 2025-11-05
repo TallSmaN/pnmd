@@ -4,41 +4,47 @@
 `pnmd` provides a minimal [slog.Handler](https://pkg.go.dev/log/slog#Handler) based on [pterm](https://github.com/pterm/pterm) that prints logs as a compact tree:
 timestamp, level, message, structured attributes, and optional caller info.
 
-## Example output
-![demo](./.github/assets/output.png)
+## Demo
+![demo](./.github/assets/output.gif)
 
 ---
 
 ## Example
+
 ```go
 package main
 
 import (
 	"log/slog"
-
-	"github.com/TallSmaN/pnmd"
 )
 
 func main() {
-	pnmd.Configure(pnmd.Options{
-		Level: slog.LevelDebug,
-		CallerEnabled: map[slog.Level]bool{
-			slog.LevelDebug: true,
-			slog.LevelInfo:  true,
-			slog.LevelWarn:  true,
-			slog.LevelError: true,
-		},
-	})
+	logger := Get().
+		Configure(Options{Level: slog.LevelDebug}).
+		DisableCallerFor(slog.LevelInfo).
+		EnableCallerFor(slog.LevelError)
 
-	log := pnmd.Get()
+	logger.Debug("initializing cache subsystem", "cache", "redis", "host", "localhost", "port", 6379)
 
-	log.Info("server started", "addr", ":8080")
-	log.Debug("cache primed", "keys", "123")
+	logger.Info("cache connected")
 
-	pnmd.SetLevel(slog.LevelWarn)
-	log.Warn("slow request", "latency", "230ms")
-	log.Error("write failed", "path", "/tmp/out.log")
+	logger.Warn("slow query detected", "duration_ms", 1823, "query", "SELECT * FROM users WHERE active=1", "user", "analytics-worker")
+
+	logger.Error("failed to write audit event", "error", "disk full", "path", "/var/log/audit.json", "component", "audit", "retry_in_sec", 30)
+
+	logger.Debug("config reloaded", "file", "/etc/app/config.yaml", "changes", 5)
+
+	logger.Info("http server started", "addr", ":8080", "threads", 8)
+
+	logger.Warn("deprecated API usage", "endpoint", "/v1/legacy", "client", "mobile-android", "version", "1.2.0")
+
+	logger.Error("user authentication failed", "user", "john", "ip", "192.168.1.42", "reason", "invalid token")
+
+	logger.Debug("background job finished", "job_id", "import-2025-11-05", "rows", 152_000, "duration_sec", 94.2)
+
+	logger.Info("graceful shutdown complete", "uptime_min", 238)
 }
+
 ```
 ---
 

@@ -36,7 +36,7 @@ func (h *TreeHandler) Handle(_ context.Context, r slog.Record) error {
 	builder.WriteString(" ")
 
 	style := styleForLevel(r.Level)
-	builder.WriteString(style.Sprintf("%s", r.Level.String()))
+	builder.WriteString(style.Sprintf("%s", r.Level.String()[:4]))
 	builder.WriteString(" ")
 
 	builder.WriteString(r.Message)
