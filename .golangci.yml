@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  enable:
+    - loggercheck
+    - sloglint
+  settings:
+    sloglint:
+      context: all
+    loggercheck:
+      kitlog: false
+      klog: false
+      logr: false
+      zap: false

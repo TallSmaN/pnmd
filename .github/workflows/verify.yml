@@ -1,0 +1,34 @@
+name: verify
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  golangci:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.9"
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          args: --issues-exit-code=0
+          version: v2.1
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.9"
+
+      - name: test
+        run: go test ./...
