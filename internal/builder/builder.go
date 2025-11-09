@@ -94,11 +94,9 @@ func (b *Builder) WriteAttrs() {
 		return
 	}
 
-	if fn := runtime.FuncForPC(b.r.PC); fn != nil {
-		f, l := fn.FileLine(b.r.PC)
-		short := filepath.Base(filepath.Dir(f)) + string(filepath.Separator) + filepath.Base(f)
-		b.sb.WriteString("\n" + b.spacePad + "└ " + pterm.NewStyle(pterm.Italic, pterm.FgGray).Sprintf("caller: %s:%d", short, l))
-	}
+	frame, _ := runtime.CallersFrames([]uintptr{b.r.PC}).Next()
+	short := filepath.Base(filepath.Dir(frame.File)) + string(filepath.Separator) + filepath.Base(frame.File)
+	b.sb.WriteString("\n" + b.spacePad + "└ " + pterm.NewStyle(pterm.Italic, pterm.FgGray).Sprintf("caller: %s:%d", short, frame.Line))
 }
 
 // Build finalizes the log entry and returns it as a string.

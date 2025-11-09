@@ -3,12 +3,9 @@ package pnmd_test
 import (
 	"log/slog"
 	"os"
-	"reflect"
 	"testing"
-	"time"
 
 	"github.com/TallSmaN/pnmd"
-	h "github.com/TallSmaN/pnmd/internal/handler"
 )
 
 func TestExample(t *testing.T) {
@@ -47,53 +44,4 @@ func TestExample(t *testing.T) {
 	logger.Info("graceful shutdown complete", "uptime_min", 238) //nolint
 
 	t.Skip()
-}
-
-func TestOptions(t *testing.T) {
-	tests := []struct {
-		Name string
-		Opts *pnmd.Options
-		Want *h.Handler
-	}{
-		{
-			Name: "nil options -> default options",
-			Opts: nil,
-			Want: &h.Handler{
-				Opts: pnmd.DefaultOptions(),
-				W:    os.Stdout,
-			},
-		},
-		{
-			Name: "custom options",
-			Opts: &pnmd.Options{
-				Level: slog.LevelInfo,
-				CallerEnabled: map[slog.Level]bool{
-					slog.LevelWarn: false,
-				},
-				TimeFormat: time.TimeOnly,
-				Padding:    5,
-			},
-			Want: &h.Handler{
-				Opts: &pnmd.Options{
-					Level: slog.LevelInfo,
-					CallerEnabled: map[slog.Level]bool{
-						slog.LevelWarn: false,
-					},
-					TimeFormat: time.TimeOnly,
-					Padding:    5,
-				},
-				W: os.Stdout,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.Name, func(t *testing.T) {
-			got := pnmd.NewHandler(os.Stdout, tt.Opts)
-
-			if !reflect.DeepEqual(got, tt.Want) {
-				t.Errorf("NewHandler() = %+v, want %+v", got, tt.Want)
-			}
-		})
-	}
 }

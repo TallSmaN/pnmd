@@ -3,6 +3,7 @@ module github.com/TallSmaN/pnmd
 go 1.24.9
 
 require (
+	github.com/google/go-cmp v0.7.0
 	github.com/pterm/pterm v0.12.82
 )
 
